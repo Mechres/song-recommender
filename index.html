@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Recommender</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            color: #1DB954;
+            text-align: center;
+        }
+        #trackForm {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #1DB954;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1ed760;
+        }
+        #recommendations {
+            margin-top: 20px;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #recommendations h2 {
+            color: #1DB954;
+        }
+        #recommendations ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        #recommendations li {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .spotify-link {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            color: #1DB954;
+            font-weight: bold;
+        }
+        .spotify-logo {
+            width: 20px;
+            height: 20px;
+            margin-left: 10px;
+        }
+        .github-link { /* Style for GitHub link */
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            color: #333;
+        }
+        .github-link:hover {
+            color: #1DB954;
+        }
+    </style>
+</head>
+<body>
+    <h1>Song Recommender</h1>
+    <div id="trackForm">
+        <label for="trackId">Enter Spotify Track ID:</label>
+        <input type="text" id="trackId" name="trackId" required>
+        <button onclick="getRecommendations()">Get Recommendations</button>
+    </div>
+    <div id="recommendations">
+        <h2>Recommendations</h2>
+        <ul id="recommendationsList"></ul>
+        <a class="github-link" href="https://github.com/Mechres" target="_blank">
+        <i class="fab fa-github"></i></a>
+    </div>
+
+    <script>
+        function displayRecommendations(recommendations) {
+            // Clear the recommendations list
+            const recommendationList = document.getElementById('recommendation-list');
+
+            while (recommendationList.firstChild) {
+                recommendationList.removeChild(recommendationList.firstChild);
+            }
+
+            // Append each track info to the list
+            for (const { name, artist } of recommendations) {
+                const trackInfo = document.createElement('li');
+
+                const spotifyLink = document.createElement('a');
+                spotifyLink.href = `https://open.spotify.com/search/${name} ${artist}`;
+                spotifyLink.textContent = `${name} by ${artist}`;
+
+                trackInfo.appendChild(spotifyLink);
+                recommendationList.appendChild(trackInfo);
+            }
+        }
+        function getRecommendations() {
+            const trackId = document.getElementById('trackId').value;
+            fetch('/recommend', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ track_id: trackId }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                const recommendationsList = document.getElementById('recommendationsList');
+                recommendationsList.innerHTML = '';
+                data.forEach(track => {
+                    const li = document.createElement('li');
+                    const trackInfo = document.createElement('span');
+                    trackInfo.textContent = `${track.artist} - ${track.name} - ${track.genres || 'Unknown Genre'}`;
+                    li.appendChild(trackInfo);
+
+                    const spotifyLink = document.createElement('a');
+                    spotifyLink.href = `https://open.spotify.com/intl-tr/track/${track.id}`;
+                    spotifyLink.target = '_blank';
+                    spotifyLink.className = 'spotify-link';
+                    spotifyLink.textContent = '';
+
+                    const spotifyLogo = document.createElement('img');
+                    spotifyLogo.src = 'https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png';
+                    spotifyLogo.alt = 'Spotify';
+                    spotifyLogo.className = 'spotify-logo';
+                    spotifyLink.appendChild(spotifyLogo);
+
+                    li.appendChild(spotifyLink);
+                    recommendationsList.appendChild(li);
+                });
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+</html>
