@@ -1,8 +1,18 @@
 # Song Recommender
 
+
+
 This Flask-based application utilizes Spotify's API and machine learning techniques to provide personalized song recommendations. It analyzes track features (like tempo, danceability, energy) and genres to find songs you'll likely enjoy.
 
+You can get recommendations by Single Track, Playlist or Recently Played. And create a playlist with recommended songs!
+
 Dataset and pre-trained model included.
+
+Updated Version
+
+## Youtube Video:
+
+[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/R6HD1BgCJ6E/0.jpg)](https://www.youtube.com/watch?v=R6HD1BgCJ6E)
 
 ## Features
 
