@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Recommender</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div class="container mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
+        <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">Song Recommender</h1>
+
+        <div id="userSection" class="mb-4 text-right">
+            <a href="/logout" class="text-blue-500 hover:text-blue-700">Logout</a>
+        </div>
+
+        <div id="recommendationSection">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800">Get Recommendations</h2>
+
+            <div class="mb-4">
+                <select id="inputType" class="w-full p-2 border rounded bg-white focus:outline-none focus:shadow-outline">
+                    <option value="track">Single Track</option>
+                    <option value="playlist">Playlist</option>
+                    <option value="recent">Recently Played</option>
+                </select>
+            </div>
+
+            <div id="trackInput" class="mb-4">
+                <input type="text" id="trackId" placeholder="Enter track ID(Not necessary if Recently Played is selected.)" class="w-full p-2 border rounded bg-white focus:outline-none focus:shadow-outline">
+            </div>
+
+            <div id="playlistInput" class="hidden mb-4">
+                <select id="playlistSelect" class="w-full p-2 border rounded bg-white focus:outline-none focus:shadow-outline">
+                    <option value="">Select a playlist</option>
+                </select>
+            </div>
+
+            <div class="mb-4">
+                <label class="flex items-center">
+                    <input type="checkbox" id="useDeepLearning" class="mr-2">
+                    <span class="ml-2 text-gray-700">Use Deep Learning(Might Take Long!)</span>
+                </label>
+            </div>
+
+            <div class="mb-4">
+                <label for="numRecommendations" class="block text-gray-700 mb-2">Number of Recommendations:</label>
+                <input type="range" id="numRecommendations" min="1" max="50" value="10" class="w-full">
+                <span id="numRecommendationsValue" class="block text-gray-700 text-sm">10</span>
+            </div>
+
+            <div class="mb-4">
+                <button id="getRecommendations" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                    Get Recommendations
+                </button>
+            </div>
+        </div>
+
+        <div id="recommendations" class="mt-6">
+            <h2 class="text-xl font-semibold mb-2 text-gray-800">Recommendations</h2>
+            <ul id="recommendationsList" class="list-disc list-inside"></ul>
+        </div>
+
+        <div id="createPlaylistSection" class="mt-4 hidden">
+            <input type="text" id="newPlaylistName" placeholder="Enter playlist name" class="w-full p-2 border rounded bg-white focus:outline-none focus:shadow-outline mb-2">
+            <button id="createPlaylist" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                Create Playlist
+            </button>
+        </div>
+    </div>
+   <script>
+       //I have no idea what I am doing here.
+document.addEventListener('DOMContentLoaded', function() {
+  const inputType = document.getElementById('inputType');
+  const trackInput = document.getElementById('trackInput');
+  const playlistInput = document.getElementById('playlistInput');
+  const playlistSelect = document.getElementById('playlistSelect');
+  const getRecommendationsBtn = document.getElementById('getRecommendations');
+  const recommendationsList = document.getElementById('recommendationsList');
+  const createPlaylistSection = document.getElementById('createPlaylistSection');
+  const createPlaylistBtn = document.getElementById('createPlaylist');
+  const numRecommendationsSlider = document.getElementById('numRecommendations');
+  const numRecommendationsValue = document.getElementById('numRecommendationsValue');
+
+  let recommendationData = []; // Store the recommendation data
+
+  // Fetch user playlists
+  function fetchUserPlaylists() {
+    fetch('/user-playlists')
+      .then(response => response.json())
+      .then(data => {
+        playlistSelect.innerHTML = '';
+        data.items.forEach(playlist => {
+          const option = document.createElement('option');
+          option.value = playlist.id;
+          option.text = playlist.name;
+          playlistSelect.add(option);
+        });
+      })
+      .catch(error => {
+        console.error('Error fetching playlists:', error);
+        // Add display error message to user!
+      });
+  }
+
+  // Initial fetch on page load
+  fetchUserPlaylists();
+
+  // Number of recommendations slider
+  numRecommendationsSlider.addEventListener('input', () => {
+    numRecommendationsValue.textContent = numRecommendationsSlider.value;
+  });
+
+  // Toggle input type
+  inputType.addEventListener('change', function() {
+    if (this.value === 'playlist') {
+      trackInput.classList.add('hidden');
+      playlistInput.classList.remove('hidden');
+    } else {
+      trackInput.classList.remove('hidden');
+      playlistInput.classList.add('hidden');
+    }
+  });
+
+  // Get recommendations
+  getRecommendationsBtn.addEventListener('click', function() {
+    const input = inputType.value === 'playlist' ? playlistSelect.value : document.getElementById('trackId').value;
+    const useDeepLearning = document.getElementById('useDeepLearning').checked;
+    const numRecommendations = numRecommendationsSlider.value;
+
+    fetch('/recommend', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        input_type: inputType.value,
+        input_id: input,
+        use_deep_learning: useDeepLearning,
+        num_recommendations: numRecommendations
+      }),
+    })
+      .then(response => response.json())
+      .then(data => {
+        recommendationData = data; // Store the data
+        recommendationsList.innerHTML = '';
+        data.forEach(track => {
+          const li = document.createElement('li');
+          li.textContent = `${track.name} by ${track.artist}`;
+          recommendationsList.appendChild(li);
+        });
+        createPlaylistSection.classList.remove('hidden');
+      })
+      .catch(error => {
+        console.error('Error getting recommendations:', error);
+        // Add display error message to user!
+      });
+  });
+
+  // Create playlist
+  createPlaylistBtn.addEventListener('click', function() {
+    const playlistName = document.getElementById('newPlaylistName').value;
+    const trackUris = recommendationData.map(track => `spotify:track:${track.id}`);
+
+    fetch('/create-playlist', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: playlistName,
+        tracks: trackUris
+      }),
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        alert('Playlist created successfully!');
+        console.log('Playlist ID:', data.playlist_id);
+      })
+      .catch(error => {
+        console.error('Error creating playlist:', error);
+        alert('An error occurred while creating the playlist. Please try again.');
+      });
+  });
+});
+</script>
+
+</body>
+</html>
