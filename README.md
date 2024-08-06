@@ -12,7 +12,7 @@ Updated Version
 
 ## Youtube Video:
 
-[![IMAGE ALT TEXT HERE](https://img.youtube.com/vi/R6HD1BgCJ6E/0.jpg)](https://www.youtube.com/watch?v=R6HD1BgCJ6E)
+[![Youtube](https://img.youtube.com/vi/i_qr6q522V8/0.jpg)](https://www.youtube.com/watch?v=i_qr6q522V8)
 
 ## Features
 
