@@ -5,39 +5,52 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Song Recommender</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .bg-spotify {
+            background-color: #1DB954;
+        }
+        .hover\:bg-spotify-dark:hover {
+            background-color: #1AA34A;
+        }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
-    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md text-center">
-        <h1 id="song-recommender" class="text-3xl font-bold mb-6 text-gray-800">Song Recommender</h1>
-
-        <div id="loginSection" class="mb-4">
-            <a href="/login" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Login with Spotify</a>
-        </div>
-
-        <div id="userSection" class="hidden mb-4">
-            <a href="/recommendations" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Get Recommendations</a>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-xl overflow-hidden">
+            <div class="bg-gradient-to-r from-purple-500 to-pink-500 p-6 text-white">
+                <h1 class="text-4xl font-bold mb-2">Song Recommender</h1>
+                <p class="text-lg">Discover your next favorite song</p>
+            </div>
+            <div class="p-6">
+                <p class="text-gray-700 mb-6">Get personalized song recommendations based on your music taste. Connect with Spotify to start exploring!</p>
+                <div id="loginSection" class="mb-4">
+                    <a href="/login" class="bg-spotify hover:bg-spotify-dark text-white font-bold py-3 px-6 rounded-full inline-flex items-center transition duration-300">
+                        <svg class="w-6 h-6 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.8-.179-.92-.601-.12-.418.18-.8.6-.92 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                        </svg>
+                        Login with Spotify
+                    </a>
+                </div>
+                <div id="userSection" class="hidden">
+                    <a href="/recommendations" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-full inline-flex items-center transition duration-300">
+                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                        </svg>
+                        Get Recommendations
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
-
     <script>
-        // This function runs when the page is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            // Check if user is logged in
-            fetch('/check-auth')
-                .then(function(response) {
-                    return response.json();
-                })
-                .then(function(data) {
-                    if (data.authenticated) {
-                        // If authenticated, show the user section and hide the login section
-                        document.getElementById('loginSection').classList.add('hidden');
-                        document.getElementById('userSection').classList.remove('hidden');
-                    }
-                })
-                .catch(function(error) {
-                    console.error('Error checking authentication:', error);
-                });
-        });
+        fetch('/check-auth')
+            .then(response => response.json())
+            .then(data => {
+                if (data.authenticated) {
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('userSection').classList.remove('hidden');
+                }
+            });
     </script>
 </body>
 </html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ user_info.display_name }}'s Profile - Song Recommender</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">{{ user_info.display_name }}'s Profile</h1>
+            <a href="/recommendations" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Go Back to Recommendations</a>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-2xl font-semibold mb-4">Top Tracks</h2>
+                <ul class="space-y-2">
+                    {% for track in top_tracks %}
+                    <li class="flex items-center">
+                        <img src="{{ track.album.images[2].url }}" alt="{{ track.name }}" class="w-10 h-10 mr-3">
+                        <span>{{ track.name }} by {{ track.artists[0].name }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-2xl font-semibold mb-4">Top Artists</h2>
+                <ul class="space-y-2">
+                    {% for artist in top_artists %}
+                    <li class="flex items-center">
+                        <img src="{{ artist.images[2].url }}" alt="{{ artist.name }}" class="w-10 h-10 mr-3 rounded-full">
+                        <span>{{ artist.name }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-2xl font-semibold mb-4">Favorite Genres</h2>
+                <div class="h-64">
+                    <canvas id="genreChart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow">
+                <h2 class="text-2xl font-semibold mb-4">Playlists</h2>
+                <ul class="space-y-2">
+                    {% for playlist in playlists %}
+                    <li>
+                        <span class="font-semibold">{{ playlist.name }}</span> ({{ playlist.tracks.total }} tracks)
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Genre chart
+        const genreCtx = document.getElementById('genreChart').getContext('2d');
+        new Chart(genreCtx, {
+            type: 'doughnut',
+            data: {
+                labels: [{% for genre, count in favorite_genres %}'{{ genre }}',{% endfor %}],
+                datasets: [{
+                    data: [{% for genre, count in favorite_genres %}{{ count }},{% endfor %}],
+                    backgroundColor: [
+                        '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                legend: {
+                    position: 'right',
+                }
+            }
+        });
+    </script>
+</body>
+</html>

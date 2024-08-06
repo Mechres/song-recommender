@@ -4,7 +4,7 @@ import random
 import json
 from datetime import timedelta
 from functools import wraps
-from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for
+from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, render_template
 from flask_cors import CORS
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
@@ -19,30 +19,33 @@ from tensorflow.keras.layers import Input, Dense, Conv1D, LSTM, GlobalMaxPooling
 import requests
 import logging
 import uuid
+from collections import Counter
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 
-app = Flask(__name__)
-CORS(app, supports_credentials=True, origins=["http://localhost:5000"])  # Replace with your frontend URL
-
+app = Flask(__name__, template_folder='templates')
+CORS(app, supports_credentials=True, origins=["http://127.0.0.1:5000"])  # Replace with your frontend URL
+# Use a more secure method to generate a secret key
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.urandom(24)
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)
 app.config['SESSION_COOKIE_SECURE'] = True  # for HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # To improve security against CSRF attacks.
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # to improve security against CSRF attacks.
 
 # Spotify API credentials
-client_id = 'client_id'
-client_secret = 'client_secret'
+client_id = 'client_id'     # Update this
+client_secret = 'client_secret'     # Update this
 redirect_uri = 'http://127.0.0.1:5000/callback'  # Update this with your redirect URI
 
 # Initialize Spotify client
 sp_oauth = SpotifyOAuth(client_id=client_id,
                         client_secret=client_secret,
                         redirect_uri=redirect_uri,
-                        scope='user-library-read user-read-recently-played playlist-read-private playlist-read-collaborative playlist-modify-public playlist-modify-private',
+                        scope='user-library-read user-read-recently-played playlist-read-private '
+                              'playlist-read-collaborative playlist-modify-public playlist-modify-private '
+                              'user-top-read user-read-private',
                         cache_path=None)  # Disabled caching
 
 # Initialize Spotify client
@@ -50,22 +53,21 @@ client_credentials_manager = SpotifyClientCredentials(client_id=client_id, clien
 sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager, retries=10, status_retries=10,
                      backoff_factor=0.1)
 
-
 @app.before_request
 def make_session_permanent():
     session.permanent = True
     app.permanent_session_lifetime = timedelta(days=1)
 
-
 def exponential_backoff(retries):
     return min(60, (2 ** retries) + (random.randint(0, 1000) / 1000))
 
 
+
 def retry_with_exponential_backoff(
-        func,
-        retries=5,
-        backoff_in_seconds=1,
-        max_backoff_in_seconds=60
+    func,
+    retries=5,
+    backoff_in_seconds=1,
+    max_backoff_in_seconds=60
 ):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -83,9 +85,7 @@ def retry_with_exponential_backoff(
                     x += 1
                 else:
                     raise
-
     return wrapper
-
 
 @retry_with_exponential_backoff
 def get_user_playlists(sp):
@@ -98,13 +98,11 @@ def recommendations_page():
         return redirect(url_for('login'))
     return send_from_directory('.', 'recommendations.html')
 
-
 @app.route('/check-auth')
 def check_auth():
     if not session.get('token_info'):
         return jsonify({"authenticated": False})
     return jsonify({"authenticated": True})
-
 
 def get_tracks_features(track_ids, max_retries=5):
     retries = 0
@@ -238,12 +236,11 @@ def load_progress(playlist_id):
 
 
 def load_or_create_dataset():
-    if os.path.exists('new_dataset.csv'):
-        df = pd.read_csv('new_dataset.csv')
+    if os.path.exists('songs_dataset.csv'):
+        df = pd.read_csv('songs_dataset.csv')
         df['genres'] = df['genres'].fillna('unknown')
         return df
     else:
-        # Collect data for a diverse set of songs (Too much for rate limit)
         playlist_ids = [
             'spotify:playlist:37i9dQZF1DX4o1oenSJRJd',  # All Out 00s
             'spotify:playlist:37i9dQZF1DX4io1yPyoLtv',  # Turkish 80's
@@ -305,7 +302,7 @@ def load_or_create_dataset():
         # Explicitly convert genres to string to prevent future issues
         df['genres'] = df['genres'].astype(str)
 
-        df.to_csv('new_dataset.csv', index=False)
+        df.to_csv('songs_dataset.csv', index=False)
         return df
 
 
@@ -374,40 +371,70 @@ def get_input_tracks(sp, input_type, input_id):
     else:
         raise ValueError("Invalid input type")
 
-
-def get_recommendations(similarities):
-    similar_indices = similarities[0].argsort()[::-1][1:]
+def get_recommendations(similarities, df, num_recommendations):
+    similar_indices = similarities.argsort()[::-1][1:num_recommendations+1]
     return df.iloc[similar_indices][['name', 'id', 'artist', 'genres']].to_dict('records')
 
 
-def calculate_similarities(input_track, use_deep_learning):
+def calculate_similarities(input_track, X_audio, X_genres, use_deep_learning, weights, audio_feature_cols, scaler,
+                           tfidf, model):
+    input_audio_features = input_track[audio_feature_cols].values.reshape(1, -1)
+
+    # Ensure weights array has the correct shape
+    weight_array = np.array(list(weights.values())).reshape(1, -1)
+    if weight_array.shape[1] != input_audio_features.shape[1]:
+        weight_array = np.ones((1, input_audio_features.shape[1]))  # Default to equal weights if shape mismatch
+
+    # Apply weights to features
+    weighted_input_features = input_audio_features * weight_array
+    weighted_features = X_audio.values * weight_array
+
     if use_deep_learning:
-        input_audio_features = input_track[audio_feature_cols].values.reshape(1, -1)
-        input_dl_features = get_dl_features(input_audio_features)
-        all_dl_features = get_dl_features(X_audio.values)
-        audio_similarities = cosine_similarity(input_dl_features, all_dl_features)
+        input_dl_features = get_dl_features(weighted_input_features, model)
+        all_dl_features = get_dl_features(weighted_features, model)
+        audio_similarities = cosine_similarity(input_dl_features, all_dl_features)[0]
     else:
-        input_audio_features_scaled = scaler.transform(input_track[audio_feature_cols].values.reshape(1, -1))
-        audio_similarities = cosine_similarity(input_audio_features_scaled, X_audio_scaled)
+        input_audio_features_scaled = scaler.transform(weighted_input_features)
+        X_audio_scaled = scaler.transform(weighted_features)  # Scale all features after weighting
+        audio_similarities = cosine_similarity(input_audio_features_scaled, X_audio_scaled)[0]
 
     input_genres = tfidf.transform([input_track['genres']])
-    genre_similarities = cosine_similarity(input_genres, X_genres)
+    genre_similarities = cosine_similarity(input_genres, X_genres)[0]
 
-    return 0.7 * audio_similarities + 0.3 * genre_similarities  # 70 % Audio Features, %30 Genre
+    # Ensure audio_similarities and genre_similarities have the same shape
+    if audio_similarities.shape != genre_similarities.shape:
+        # Trim or pad the longer array to match the shorter one
+        min_length = min(audio_similarities.shape[0], genre_similarities.shape[0])
+        audio_similarities = audio_similarities[:min_length]
+        genre_similarities = genre_similarities[:min_length]
 
+    return 0.7 * audio_similarities + 0.3 * genre_similarities
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
     sp = get_spotify_client()
     if not sp:
-        logging.error("Failed to get Spotify client in recommend route")
         return jsonify({"error": "Not authenticated"}), 401
 
     data = request.json
     input_type = data.get('input_type', 'track')
     input_id = data.get('input_id')
+    weights = data.get('weights', {})
+    exclude_artists = data.get('exclude_artists', [])
+    exclude_genres = data.get('exclude_genres', [])
+    num_recommendations = int(data.get('num_recommendations', 10))
     use_deep_learning = data.get('use_deep_learning', False)
-    num_recommendations = data.get('num_recommendations', 10)
+    mood = data.get('mood', '')
+
+    mood_adjustments = {
+        'happy': {'valence': 0.7, 'energy': 0.6},
+        'sad': {'valence': 0.3, 'energy': 0.4},
+        'energetic': {'energy': 0.8, 'tempo': 0.7},
+        'relaxed': {'energy': 0.3, 'acousticness': 0.6}
+    }
+    if mood in mood_adjustments:
+        for feature, value in mood_adjustments[mood].items():
+            weights[feature] = weights.get(feature, 0.5) * value
 
     try:
         input_tracks = get_input_tracks(sp, input_type, input_id)
@@ -422,25 +449,53 @@ def recommend():
             input_track = df[df['id'] == track_id].iloc[0]
             input_track['genres'] = input_track['genres'].lower()
 
-            # Cache similarities calculation
-            similarities = get_cached_similarities(input_track, use_deep_learning)
+            similarities = calculate_similarities(input_track, X_audio, X_genres, use_deep_learning, weights,
+                                                  audio_feature_cols, scaler, tfidf, model)
+            recommendations = get_recommendations(similarities, df, num_recommendations * 2)  # Get more recommendations to allow for filtering
 
-            # Get recommendations without caching
-            recommendations = get_recommendations(similarities)
-            all_recommendations.extend(recommendations)
+            # Filter out excluded artists and genres
+            filtered_recommendations = [
+                track for track in recommendations
+                if track['artist'].lower() not in [a.lower() for a in exclude_artists]
+                   and not any(genre.lower() in exclude_genres for genre in track['genres'].split())
+            ]
 
-        # Deduplication logic (Fixes showing one song more than one!)
+            all_recommendations.extend(filtered_recommendations)
+
+        # Deduplication logic
         seen_tracks = set()
         unique_recommendations = []
         for rec in all_recommendations:
-            track_name = rec['name'].lower() if isinstance(rec['name'], str) else rec['name']
-            artist_name = rec['artist'].lower() if isinstance(rec['artist'], str) else rec['artist']
+            track_name = rec['name'].lower()
+            artist_name = rec['artist'].lower()
             track_key = (track_name, artist_name)
             if track_key not in seen_tracks:
                 seen_tracks.add(track_key)
                 unique_recommendations.append(rec)
 
-        top_recommendations = unique_recommendations[:int(num_recommendations)]
+        top_recommendations = unique_recommendations[:num_recommendations]
+
+        # Fetch additional track information from Spotify API
+        track_ids = [track['id'] for track in top_recommendations]
+        tracks_info = sp.tracks(track_ids)['tracks']
+        audio_features = sp.audio_features(track_ids)
+
+        # Combine track info with audio features
+        for track, info, features in zip(top_recommendations, tracks_info, audio_features):
+            track.update({
+                'preview_url': info['preview_url'],
+                'album': {
+                    'name': info['album']['name'],
+                    'images': info['album']['images']
+                },
+                'danceability': features['danceability'],
+                'energy': features['energy'],
+                'valence': features['valence'],
+                'acousticness': features['acousticness'],
+                'instrumentalness': features['instrumentalness'],
+                'liveness': features['liveness']
+            })
+
         return jsonify(top_recommendations)
 
     except Exception as e:
@@ -448,9 +503,39 @@ def recommend():
         return jsonify({"error": "An error occurred while processing your request"}), 500
 
 
+# New route to get access token for Spotify Web Playback SDK
+@app.route('/get-spotify-token', methods=['GET'])
+def get_spotify_token():
+    sp = get_spotify_client()
+    if not sp:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    token_info = session.get('token_info', None)
+    if token_info:
+        return jsonify({"token": token_info['access_token']})
+    else:
+        return jsonify({"error": "No token available"}), 401
+
+@app.route('/get-token')
+def get_token():
+    token_info = session.get('token_info', None)
+    if not token_info:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    now = int(time.time())
+    is_expired = token_info['expires_at'] - now < 60
+
+    if is_expired:
+        try:
+            token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
+            session['token_info'] = token_info
+        except Exception as e:
+            return jsonify({"error": "Failed to refresh token"}), 500
+
+    return jsonify({"token": token_info['access_token']})
+
 def get_cached_similarities(input_track, use_deep_learning):
     return calculate_similarities(input_track, use_deep_learning)
-
 
 @app.route('/')
 def index():
@@ -495,14 +580,13 @@ def callback():
         logging.error("No code received in callback")
         return jsonify({"error": "Authorization code missing"}), 400
 
-
 @app.route('/logout')
 def logout():
     token_info = session.get('token_info')
     user_id = session.get('user_id')
 
     if token_info:
-        # Revoke token using Spotify's Web API (Doesn't work! I'll fix this later.)
+        # Revoke token using Spotify's Web API (Does not work!)
         url = 'https://accounts.spotify.com/api/token/revoke'
         data = {
             'token': token_info['access_token'],
@@ -527,10 +611,9 @@ def logout():
 
     return redirect(url_for('index'))
 
-
 def get_spotify_client():
     token_info = session.get('token_info', None)
-    logging.debug(f"Token info from session: {token_info}")
+    logging.debug(f"Token info from session: {token_info}") 
     if not token_info:
         logging.error("No token info in session")
         return None
@@ -548,7 +631,6 @@ def get_spotify_client():
 
     return spotipy.Spotify(auth=token_info['access_token'])
 
-
 @app.route('/user-playlists')
 def get_user_playlists():
     sp = get_spotify_client()
@@ -558,7 +640,7 @@ def get_user_playlists():
 
     try:
         playlists = sp.current_user_playlists()
-        logging.debug(f"Spotify API response for playlists: {playlists}")
+        logging.debug(f"Spotify API response for playlists: {playlists}")  # Add this line
         return jsonify(playlists)
     except Exception as e:
         logging.error(f"Error in get_user_playlists: {str(e)}")
@@ -566,6 +648,7 @@ def get_user_playlists():
 
 
 @app.route('/recently-played')
+
 def get_recently_played():
     sp = get_spotify_client()
     if not sp:
@@ -595,12 +678,10 @@ def create_playlist():
         return jsonify({"error": "An error occurred while creating the playlist"}), 500
 
 
-# Add this to your routes
 @app.before_request
 def log_request_info():
     logging.debug('Headers: %s', request.headers)
     logging.debug('Body: %s', request.get_data())
-
 
 @app.after_request
 def log_response_info(response):
@@ -608,6 +689,33 @@ def log_response_info(response):
     logging.debug('Response Headers: %s', response.headers)
     return response
 
+
+@app.route('/profile')
+def profile():
+    sp = get_spotify_client()
+    if not sp:
+        return redirect(url_for('login'))
+
+    try:
+        user_info = sp.me()
+        top_tracks = sp.current_user_top_tracks(limit=10, time_range='medium_term')['items']
+        top_artists = sp.current_user_top_artists(limit=10, time_range='medium_term')['items']
+        playlists = sp.current_user_playlists(limit=10)['items']
+
+        # Get favorite genres
+        all_genres = [genre for artist in top_artists for genre in artist['genres']]
+        genre_counts = Counter(all_genres)
+        favorite_genres = genre_counts.most_common(5)
+
+        return render_template('profile.html',
+                               user_info=user_info,
+                               top_tracks=top_tracks,
+                               top_artists=top_artists,
+                               favorite_genres=favorite_genres,
+                               playlists=playlists)
+    except Exception as e:
+        print(f"Error fetching user profile data: {str(e)}")
+        return jsonify({"error": "An error occurred while fetching your profile data"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
