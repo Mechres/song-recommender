@@ -4,192 +4,343 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Song Recommender</title>
-
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
 </head>
-<body class="bg-gray-100 font-sans">
-
-    <div class="container mx-auto mt-10 p-6 bg-white rounded-lg shadow-lg">
-        <h1 class="text-3xl font-bold text-center mb-8 text-gray-800">Song Recommender</h1>
-
-        <div id="userSection" class="mb-4 text-right">
-            <a href="/logout" class="text-blue-500 hover:text-blue-700">Logout</a>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">Song Recommender</h1>
+            <div>
+                <a href="/profile" class="text-blue-500 hover:text-blue-700 mr-4">Profile</a>
+                <a href="/logout" class="text-blue-500 hover:text-blue-700">Logout</a>
+            </div>
         </div>
 
-        <div id="recommendationSection">
-            <h2 class="text-xl font-semibold mb-4 text-gray-800">Get Recommendations</h2>
-
-            <div class="mb-4">
-                <select id="inputType" class="w-full p-2 border rounded bg-white focus:outline-none focus:shadow-outline">
-                    <option value="track">Single Track</option>
-                    <option value="playlist">Playlist</option>
-                    <option value="recent">Recently Played</option>
-                </select>
-            </div>
-
-            <div id="trackInput" class="mb-4">
-                <input type="text" id="trackId" placeholder="Enter track ID(Not necessary if Recently Played is selected.)" class="w-full p-2 border rounded bg-white focus:outline-none focus:shadow-outline">
-            </div>
-
-            <div id="playlistInput" class="hidden mb-4">
-                <select id="playlistSelect" class="w-full p-2 border rounded bg-white focus:outline-none focus:shadow-outline">
-                    <option value="">Select a playlist</option>
-                </select>
-            </div>
-
-            <div class="mb-4">
-                <label class="flex items-center">
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <div id="input-section" class="mb-8">
+                <div class="flex justify-center space-x-4 mb-4">
+                    <button id="singleTrackBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Single Track</button>
+                    <button id="playlistBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Playlist</button>
+                    <button id="recentlyPlayedBtn" class="bg-blue-500 text-white px-4 py-2 rounded">Recently Played</button>
+                </div>
+                <div id="inputField" class="mb-4">
+                    <input type="text" id="trackInput" placeholder="Enter track ID" class="w-full p-2 border rounded">
+                </div>
+                <div id="playlistDropdown" class="mb-4 hidden">
+                    <select id="playlistSelect" class="w-full p-2 border rounded">
+                        <option value="">Select a playlist</option>
+                    </select>
+                </div>
+                <div class="flex items-center justify-center mb-4">
                     <input type="checkbox" id="useDeepLearning" class="mr-2">
-                    <span class="ml-2 text-gray-700">Use Deep Learning(Might Take Long!)</span>
-                </label>
+                    <label for="useDeepLearning">Use Deep Learning(Might take too long!)</label>
+                </div>
+                <div class="mb-4">
+                    <label for="numRecommendations" class="block text-gray-700 text-sm font-bold mb-2">Number of Recommendations:</label>
+                    <input type="range" id="numRecommendations" min="1" max="50" value="10" class="w-full">
+                    <span id="numRecommendationsValue" class="block text-gray-700 text-sm">10</span>
+                </div>
+                <button id="getRecommendationsBtn" class="bg-green-500 text-white px-4 py-2 rounded w-full">Get Recommendations</button>
+            </div>
+            <div id="mood-selector" class="mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Select Mood</h2>
+            <div class="flex space-x-4">
+                <button class="mood-btn bg-yellow-400 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded" data-mood="happy">Happy</button>
+                <button class="mood-btn bg-blue-400 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded" data-mood="sad">Sad</button>
+                <button class="mood-btn bg-red-400 hover:bg-red-500 text-white font-bold py-2 px-4 rounded" data-mood="energetic">Energetic</button>
+                <button class="mood-btn bg-green-400 hover:bg-green-500 text-white font-bold py-2 px-4 rounded" data-mood="relaxed">Relaxed</button>
+            </div>
+            </div>
+            <div id="feature-weights" class="mb-8">
+                <h2 class="text-2xl font-semibold mb-4">Adjust Feature Weights</h2>
+
+                <div class="feature-slider mb-2">
+                    <label for="danceability" class="block text-gray-700 text-sm font-bold mb-2">Danceability: <span id="danceability-value">0.5</span></label>
+                    <input type="range" id="danceability" min="0" max="1" step="0.1" value="0.5" class="w-full">
+                </div>
+                <div class="feature-slider mb-2">
+                    <label for="energy" class="block text-gray-700 text-sm font-bold mb-2">Energy: <span id="energy-value">0.5</span></label>
+                    <input type="range" id="energy" min="0" max="1" step="0.1" value="0.5" class="w-full">
+                </div>
+                <div class="feature-slider mb-2">
+                    <label for="valence" class="block text-gray-700 text-sm font-bold mb-2">Valence: <span id="valence-value">0.5</span></label>
+                    <input type="range" id="valence" min="0" max="1" step="0.1" value="0.5" class="w-full">
+                </div>
+                <div class="feature-slider mb-2">
+                    <label for="liveness" class="block text-gray-700 text-sm font-bold mb-2">Liveness: <span id="liveness-value">0.5</span></label>
+                    <input type="range" id="liveness" min="0" max="1" step="0.1" value="0.5" class="w-full">
+                </div>
+                <div class="feature-slider mb-2">
+                    <label for="acousticness" class="block text-gray-700 text-sm font-bold mb-2">Acousticness: <span id="acousticness-value">0.5</span></label>
+                    <input type="range" id="acousticness" min="0" max="1" step="0.1" value="0.5" class="w-full">
+                </div>
+                <div class="feature-slider mb-2">
+                    <label for="instrumentalness" class="block text-gray-700 text-sm font-bold mb-2">instrumentalness: <span id="instrumentalness-value">0.5</span></label>
+                    <input type="range" id="instrumentalness" min="0" max="1" step="0.1" value="0.5" class="w-full">
+                </div>
             </div>
 
-            <div class="mb-4">
-                <label for="numRecommendations" class="block text-gray-700 mb-2">Number of Recommendations:</label>
-                <input type="range" id="numRecommendations" min="1" max="50" value="10" class="w-full">
-                <span id="numRecommendationsValue" class="block text-gray-700 text-sm">10</span>
-            </div>
-
-            <div class="mb-4">
-                <button id="getRecommendations" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                    Get Recommendations
-                </button>
+            <div id="exclusions" class="mb-8">
+                <h2 class="text-2xl font-semibold mb-4">Exclusions</h2>
+                <div class="mb-4">
+                    <label for="excludeArtists" class="block text-gray-700 text-sm font-bold mb-2">Exclude Artists:</label>
+                    <input type="text" id="excludeArtists" placeholder="Enter artist names, separated by commas" class="w-full p-2 border rounded">
+                </div>
+                <div class="mb-4">
+                    <label for="excludeGenres" class="block text-gray-700 text-sm font-bold mb-2">Exclude Genres:</label>
+                    <input type="text" id="excludeGenres" placeholder="Enter genres, separated by commas" class="w-full p-2 border rounded">
+                </div>
             </div>
         </div>
 
-        <div id="recommendations" class="mt-6">
-            <h2 class="text-xl font-semibold mb-2 text-gray-800">Recommendations</h2>
-            <ul id="recommendationsList" class="list-disc list-inside"></ul>
+        <div id="loader" class="loader hidden ease-linear rounded-full border-8 border-t-8 border-gray-200 h-32 w-32 mx-auto"></div>
+
+        <div id="audioFeaturesChart" class="mb-8 hidden">
+            <h2 class="text-2xl font-semibold mb-4">Audio Features Comparison</h2>
+            <canvas id="radarChart"></canvas>
         </div>
 
-        <div id="createPlaylistSection" class="mt-4 hidden">
-            <input type="text" id="newPlaylistName" placeholder="Enter playlist name" class="w-full p-2 border rounded bg-white focus:outline-none focus:shadow-outline mb-2">
-            <button id="createPlaylist" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                Create Playlist
-            </button>
+        <div id="recommendations" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+        <div id="createPlaylistSection" class="mt-8 hidden">
+            <h2 class="text-2xl font-semibold mb-4">Create Playlist</h2>
+            <input type="text" id="playlistName" placeholder="Enter playlist name" class="w-full p-2 border rounded mb-4">
+            <button id="createPlaylistBtn" class="bg-green-500 text-white px-4 py-2 rounded w-full">Create Playlist</button>
         </div>
     </div>
-   <script>
-       //I have no idea what I am doing here.
-document.addEventListener('DOMContentLoaded', function() {
-  const inputType = document.getElementById('inputType');
-  const trackInput = document.getElementById('trackInput');
-  const playlistInput = document.getElementById('playlistInput');
-  const playlistSelect = document.getElementById('playlistSelect');
-  const getRecommendationsBtn = document.getElementById('getRecommendations');
-  const recommendationsList = document.getElementById('recommendationsList');
-  const createPlaylistSection = document.getElementById('createPlaylistSection');
-  const createPlaylistBtn = document.getElementById('createPlaylist');
-  const numRecommendationsSlider = document.getElementById('numRecommendations');
-  const numRecommendationsValue = document.getElementById('numRecommendationsValue');
 
-  let recommendationData = []; // Store the recommendation data
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const singleTrackBtn = document.getElementById('singleTrackBtn');
+            const playlistBtn = document.getElementById('playlistBtn');
+            const recentlyPlayedBtn = document.getElementById('recentlyPlayedBtn');
+            const inputField = document.getElementById('inputField');
+            const playlistDropdown = document.getElementById('playlistDropdown');
+            const playlistSelect = document.getElementById('playlistSelect');
+            const getRecommendationsBtn = document.getElementById('getRecommendationsBtn');
+            const recommendationsContainer = document.getElementById('recommendations');
+            const createPlaylistSection = document.getElementById('createPlaylistSection');
+            const createPlaylistBtn = document.getElementById('createPlaylistBtn');
+            const audioFeaturesChart = document.getElementById('audioFeaturesChart');
+            let radarChart;
 
-  // Fetch user playlists
-  function fetchUserPlaylists() {
-    fetch('/user-playlists')
-      .then(response => response.json())
-      .then(data => {
-        playlistSelect.innerHTML = '';
-        data.items.forEach(playlist => {
-          const option = document.createElement('option');
-          option.value = playlist.id;
-          option.text = playlist.name;
-          playlistSelect.add(option);
+            let currentInputType = 'track';
+            let recommendedTracks = [];
+            let selectedMood = '';
+
+            document.querySelectorAll('.mood-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                selectedMood = this.dataset.mood;
+                document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-2'));
+                this.classList.add('ring-2', 'ring-offset-2');
+            });
         });
-      })
-      .catch(error => {
-        console.error('Error fetching playlists:', error);
-        // Add display error message to user!
-      });
-  }
+            singleTrackBtn.addEventListener('click', () => setInputType('track'));
+            playlistBtn.addEventListener('click', () => setInputType('playlist'));
+            recentlyPlayedBtn.addEventListener('click', () => setInputType('recent'));
 
-  // Initial fetch on page load
-  fetchUserPlaylists();
+            function setInputType(type) {
+                currentInputType = type;
+                inputField.classList.toggle('hidden', type !== 'track');
+                playlistDropdown.classList.toggle('hidden', type !== 'playlist');
+                if (type === 'playlist') {
+                    fetchPlaylists();
+                }
+            }
 
-  // Number of recommendations slider
-  numRecommendationsSlider.addEventListener('input', () => {
-    numRecommendationsValue.textContent = numRecommendationsSlider.value;
-  });
+            function fetchPlaylists() {
+                fetch('/user-playlists')
+                    .then(response => response.json())
+                    .then(data => {
+                        playlistSelect.innerHTML = '<option value="">Select a playlist</option>';
+                        data.items.forEach(playlist => {
+                            const option = document.createElement('option');
+                            option.value = playlist.id;
+                            option.textContent = playlist.name;
+                            playlistSelect.appendChild(option);
+                        });
+                    })
+                    .catch(error => console.error('Error fetching playlists:', error));
+            }
 
-  // Toggle input type
-  inputType.addEventListener('change', function() {
-    if (this.value === 'playlist') {
-      trackInput.classList.add('hidden');
-      playlistInput.classList.remove('hidden');
-    } else {
-      trackInput.classList.remove('hidden');
-      playlistInput.classList.add('hidden');
-    }
-  });
+            getRecommendationsBtn.addEventListener('click', getRecommendations);
 
-  // Get recommendations
-  getRecommendationsBtn.addEventListener('click', function() {
-    const input = inputType.value === 'playlist' ? playlistSelect.value : document.getElementById('trackId').value;
-    const useDeepLearning = document.getElementById('useDeepLearning').checked;
-    const numRecommendations = numRecommendationsSlider.value;
+            function getRecommendations() {
+                const loader = document.getElementById('loader');
+                loader.classList.remove('hidden');
+                recommendationsContainer.innerHTML = '';
+                audioFeaturesChart.classList.add('hidden');
 
-    fetch('/recommend', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        input_type: inputType.value,
-        input_id: input,
-        use_deep_learning: useDeepLearning,
-        num_recommendations: numRecommendations
-      }),
-    })
-      .then(response => response.json())
-      .then(data => {
-        recommendationData = data; // Store the data
-        recommendationsList.innerHTML = '';
-        data.forEach(track => {
-          const li = document.createElement('li');
-          li.textContent = `${track.name} by ${track.artist}`;
-          recommendationsList.appendChild(li);
+                const inputId = currentInputType === 'track' ? document.getElementById('trackInput').value :
+                                currentInputType === 'playlist' ? playlistSelect.value : '';
+
+                const requestBody = {
+                    input_type: currentInputType,
+                    input_id: inputId,
+                    weights: {
+                        danceability: parseFloat(document.getElementById('danceability').value),
+                        energy: parseFloat(document.getElementById('energy').value),
+                        valence: parseFloat(document.getElementById('valence').value),
+                        liveness: parseFloat(document.getElementById('liveness').value),
+                        acousticness: parseFloat(document.getElementById('acousticness').value),
+                        instrumentalness: parseFloat(document.getElementById('instrumentalness').value)
+                    },
+                    exclude_artists: document.getElementById('excludeArtists').value.split(',').map(artist => artist.trim()),
+                    exclude_genres: document.getElementById('excludeGenres').value.split(',').map(genre => genre.trim()),
+                    num_recommendations: parseInt(document.getElementById('numRecommendations').value),
+                    use_deep_learning: document.getElementById('useDeepLearning').checked,
+                    mood: selectedMood
+                };
+
+                fetch('/recommend', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    loader.classList.add('hidden');
+                    recommendedTracks = data;
+                    displayRecommendations(data);
+                    createPlaylistSection.classList.remove('hidden');
+                    updateAudioFeaturesChart(data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    loader.classList.add('hidden');
+                });
+            }
+
+            function displayRecommendations(tracks) {
+                recommendationsContainer.innerHTML = '';
+                tracks.forEach(track => {
+                    const trackElement = document.createElement('div');
+                    trackElement.className = 'bg-white rounded-lg shadow-md p-4 flex items-center';
+                    const albumImage = track.album && track.album.images && track.album.images.length > 0
+                        ? track.album.images[1].url  // Use the second image (usually 300x300)
+                        : 'path/to/default/image.jpg';  // Provide a default image path
+                    trackElement.innerHTML = `
+                        <img src="${albumImage}" alt="${track.name} album cover" class="w-20 h-20 object-cover mr-4">
+                        <div>
+                            <h3 class="font-bold">${track.name}</h3>
+                            <p>${track.artist}</p>
+                            <p>Genres: ${track.genres}</p>
+                        <audio controls class="w-full mt-2">
+                            <source src="${track.preview_url}" type="audio/mpeg">
+                            Your browser does not support the audio element.
+                        </audio>
+                        </div>
+                    `;
+                    recommendationsContainer.appendChild(trackElement);
+                });
+            }
+
+            function updateAudioFeaturesChart(tracks) {
+                const features = ['danceability', 'energy', 'valence', 'acousticness', 'instrumentalness', 'liveness'];
+                const averageFeatures = features.reduce((acc, feature) => {
+                    acc[feature] = tracks.reduce((sum, track) => sum + (track[feature] || 0), 0) / tracks.length;
+                    return acc;
+                }, {});
+
+                const chartData = {
+                    labels: features,
+                    datasets: [{
+                        label: 'Average Audio Features',
+                        data: features.map(feature => averageFeatures[feature]),
+                        fill: true,
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        borderColor: 'rgb(54, 162, 235)',
+                        pointBackgroundColor: 'rgb(54, 162, 235)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgb(54, 162, 235)'
+                    }]
+                };
+
+                if (radarChart) {
+                    radarChart.destroy();
+                }
+
+                const ctx = document.getElementById('radarChart').getContext('2d');
+                radarChart = new Chart(ctx, {
+                    type: 'radar',
+                    data: chartData,
+                    options: {
+                        elements: {
+                            line: {
+                                borderWidth: 3
+                            }
+                        },
+                        scales: {
+                            r: {
+                                angleLines: {
+                                    display: false
+                                },
+                                suggestedMin: 0,
+                                suggestedMax: 1
+                            }
+                        }
+                    }
+                });
+
+                audioFeaturesChart.classList.remove('hidden');
+            }
+
+            createPlaylistBtn.addEventListener('click', createPlaylist);
+
+            function createPlaylist() {
+                const playlistName = document.getElementById('playlistName').value;
+                const trackIds = recommendedTracks.map(track => track.id);
+
+                fetch('/create-playlist', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: playlistName,
+                        tracks: trackIds
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(`Playlist "${playlistName}" created successfully!`);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while creating the playlist.');
+                });
+            }
+
+            // Update slider values
+            const sliders = document.querySelectorAll('input[type="range"]');
+            sliders.forEach(slider => {
+                const output = document.getElementById(`${slider.id}-value`);
+                slider.addEventListener('input', function() {
+                    output.textContent = this.value;
+                });
+            });
+
+            // Number of recommendations slider
+            const numRecommendationsSlider = document.getElementById('numRecommendations');
+            const numRecommendationsValue = document.getElementById('numRecommendationsValue');
+            numRecommendationsSlider.addEventListener('input', function() {
+                numRecommendationsValue.textContent = this.value;
+            });
+
+            // Check authentication status on page load
+            fetch('/check-auth')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.authenticated) {
+                        window.location.href = '/login';
+                    }
+                })
+                .catch(error => console.error('Error checking authentication:', error));
         });
-        createPlaylistSection.classList.remove('hidden');
-      })
-      .catch(error => {
-        console.error('Error getting recommendations:', error);
-        // Add display error message to user!
-      });
-  });
-
-  // Create playlist
-  createPlaylistBtn.addEventListener('click', function() {
-    const playlistName = document.getElementById('newPlaylistName').value;
-    const trackUris = recommendationData.map(track => `spotify:track:${track.id}`);
-
-    fetch('/create-playlist', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        name: playlistName,
-        tracks: trackUris
-      }),
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        alert('Playlist created successfully!');
-        console.log('Playlist ID:', data.playlist_id);
-      })
-      .catch(error => {
-        console.error('Error creating playlist:', error);
-        alert('An error occurred while creating the playlist. Please try again.');
-      });
-  });
-});
-</script>
-
+    </script>
 </body>
 </html>
