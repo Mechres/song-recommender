@@ -35,7 +35,7 @@ def create_database():
             print("XLSX file found, proceeding to load data...")
             df = pd.read_excel(xlsx_file)  # Read excel instead of csv
 
-            # Drop duplicates (Choose the most suitable method as explained earlier)
+            # Drop duplicates 
             df.drop_duplicates(subset='id', keep='first', inplace=True)
 
             # Check if the table is empty before inserting data
