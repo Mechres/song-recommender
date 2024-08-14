@@ -4,7 +4,7 @@ import random
 import json
 from datetime import timedelta
 from functools import wraps
-from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, render_template
+from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, render_template, flash
 from flask_cors import CORS
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth, SpotifyClientCredentials
@@ -20,13 +20,21 @@ import requests
 import logging
 import uuid
 from collections import Counter
+import sqlite3
+from db import create_database
+import bcrypt
+from flask_login import UserMixin, LoginManager
+from flask_login import login_required, login_user, logout_user, current_user
+from flask_paginate import Pagination, get_page_parameter
+from werkzeug.security import generate_password_hash, check_password_hash
+import secrets
 
-logging.basicConfig(level=logging.DEBUG)
+
+logging.basicConfig(level=logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 app = Flask(__name__, template_folder='templates')
-CORS(app, supports_credentials=True, origins=["http://127.0.0.1:5000"])  # Replace with your frontend URL
-# Use a more secure method to generate a secret key
+CORS(app, supports_credentials=True, origins=["http://127.0.0.1/"])
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.urandom(24)
 
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=1)
@@ -35,8 +43,8 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # to improve security against CSRF attacks.
 
 # Spotify API credentials
-client_id = 'client_id'     # Update this
-client_secret = 'client_secret'     # Update this
+client_id = 'Your_Client_ID' # Update this with your ID
+client_secret = 'Your_Client_Secret' # Update this with your Secret
 redirect_uri = 'http://127.0.0.1:5000/callback'  # Update this with your redirect URI
 
 # Initialize Spotify client
@@ -45,7 +53,7 @@ sp_oauth = SpotifyOAuth(client_id=client_id,
                         redirect_uri=redirect_uri,
                         scope='user-library-read user-read-recently-played playlist-read-private '
                               'playlist-read-collaborative playlist-modify-public playlist-modify-private '
-                              'user-top-read user-read-private',
+                              'user-top-read user-read-private user-read-email',
                         cache_path=None)  # Disabled caching
 
 # Initialize Spotify client
@@ -53,21 +61,108 @@ client_credentials_manager = SpotifyClientCredentials(client_id=client_id, clien
 sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager, retries=10, status_retries=10,
                      backoff_factor=0.1)
 
+create_database()
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'admin_login'
+
+
+class AdminUser(UserMixin):
+    def __init__(self, id, username, password_hash):
+        self.id = id
+        self.username = username
+        self.password_hash = password_hash
+
+    def check_password(self, password):
+        return bcrypt.checkpw(password.encode('utf-8'), self.password_hash)
+
+
+def create_tables():
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+
+    # Create admin_users table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS admin_users
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       username TEXT UNIQUE NOT NULL,
+                       password_hash TEXT NOT NULL)''')
+
+    # Create users table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+                        id TEXT PRIMARY KEY, 
+                        username TEXT NOT NULL,
+                        email TEXT)''')
+
+    # Create recommendations table
+    cursor.execute('''CREATE TABLE IF NOT EXISTS recommendations
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       user_id TEXT NOT NULL,
+                       song_id TEXT NOT NULL,
+                       recommended_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                       FOREIGN KEY (user_id) REFERENCES users (id),
+                       FOREIGN KEY (song_id) REFERENCES songs (id))''')
+
+    conn.commit()
+    conn.close()
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM admin_users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+    conn.close()
+    if user:
+        return AdminUser(user[0], user[1], user[2])
+    return None
+
+
+# Call this function once to create an initial admin user
+# create_admin_user('admin', 'your_secure_password')
+def create_admin_user(username, password):
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS admin_users
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       username TEXT UNIQUE NOT NULL,
+                       password_hash BLOB NOT NULL)''')
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    cursor.execute("INSERT INTO admin_users (username, password_hash) VALUES (?, ?)",
+                   (username, hashed_password))
+    conn.commit()
+    conn.close()
+
+def insert_or_update_user(user_id, username, email):
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            INSERT OR REPLACE INTO users (id, username, email)
+            VALUES (?, ?, ?)
+        ''', (user_id, username, email))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"An error occurred: {e}")
+    finally:
+        conn.close()
+
 @app.before_request
 def make_session_permanent():
     session.permanent = True
     app.permanent_session_lifetime = timedelta(days=1)
 
+
 def exponential_backoff(retries):
     return min(60, (2 ** retries) + (random.randint(0, 1000) / 1000))
 
 
-
 def retry_with_exponential_backoff(
-    func,
-    retries=5,
-    backoff_in_seconds=1,
-    max_backoff_in_seconds=60
+        func,
+        retries=5,
+        backoff_in_seconds=1,
+        max_backoff_in_seconds=60
 ):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -85,11 +180,256 @@ def retry_with_exponential_backoff(
                     x += 1
                 else:
                     raise
+
     return wrapper
+
 
 @retry_with_exponential_backoff
 def get_user_playlists(sp):
     return sp.current_user_playlists()
+
+@app.route('/admin/', methods=['GET', 'POST'])
+def admin():
+    return redirect('/admin/login')
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        conn = sqlite3.connect('songs_database.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM admin_users WHERE username = ?", (username,))
+        user = cursor.fetchone()
+        conn.close()
+
+        if user:
+            stored_password = user[2]  # Assuming the password hash is stored in the third column
+            if isinstance(stored_password, str):
+                stored_password = stored_password.encode('utf-8')
+
+            if bcrypt.checkpw(password.encode('utf-8'), stored_password):
+                admin_user = AdminUser(user[0], user[1], stored_password)
+                login_user(admin_user)
+                return redirect(url_for('admin_dashboard'))
+
+        flash('Invalid username or password', 'error')
+
+    return render_template('admin_login.html')
+
+
+# Add a route for song search
+@app.route('/admin/search_songs', methods=['GET'])
+@login_required
+def search_songs():
+    query = request.args.get('query', '')
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM songs 
+        WHERE name LIKE ? OR artist LIKE ? OR genres LIKE ?
+        ORDER BY id DESC
+        LIMIT 50
+    """, ('%' + query + '%', '%' + query + '%', '%' + query + '%'))
+    songs = cursor.fetchall()
+    conn.close()
+    return render_template('admin_search_results.html', songs=songs, query=query)
+
+
+# Add a route for song details
+@app.route('/admin/song_details/<song_id>')
+@login_required
+def song_details(song_id):
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM songs WHERE id = ?", (song_id,))
+    song = cursor.fetchone()
+    conn.close()
+    if song:
+        return render_template('admin_song_details.html', song=song)
+    else:
+        flash('Song not found', 'error')
+        return redirect(url_for('admin_songs'))
+
+
+@app.route('/admin/logout')
+@login_required
+def admin_logout():
+    logout_user()
+    return redirect(url_for('admin_login'))
+
+
+@app.route('/admin/dashboard')
+@login_required
+def admin_dashboard():
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+
+    # Get total number of songs
+    cursor.execute("SELECT COUNT(*) FROM songs")
+    total_songs = cursor.fetchone()[0]
+
+    # Get total number of users
+    cursor.execute("SELECT COUNT(*) FROM users")
+    total_users = cursor.fetchone()[0]
+
+    # Get total number of recommendations
+    cursor.execute("SELECT COUNT(*) FROM recommendations")
+    total_recommendations = cursor.fetchone()[0]
+
+    # Get top 5 users with most recommendations
+    cursor.execute("""
+        SELECT users.username, COUNT(recommendations.id) as rec_count
+        FROM users
+        LEFT JOIN recommendations ON users.id = recommendations.user_id
+        GROUP BY users.id
+        ORDER BY rec_count DESC
+        LIMIT 5
+    """)
+    top_users = cursor.fetchall()
+
+    conn.close()
+
+    return render_template('admin_dashboard.html',
+                           total_songs=total_songs,
+                           total_users=total_users,
+                           total_recommendations=total_recommendations,
+                           top_users=top_users)
+@app.route('/admin/songs', methods=['GET', 'POST'])
+@login_required
+def admin_songs():
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+
+    if request.method == 'POST':
+        song_id = request.form['id']
+        name = request.form['name']
+        artist = request.form['artist']
+        genres = request.form['genres']
+
+        cursor.execute("""
+            UPDATE songs 
+            SET name = ?, artist = ?, genres = ? 
+            WHERE id = ?
+        """, (name, artist, genres, song_id))
+        conn.commit()
+        flash('Song updated successfully!', 'success')
+
+    page = request.args.get(get_page_parameter(), type=int, default=1)
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    cursor.execute("SELECT COUNT(*) FROM songs")
+    total = cursor.fetchone()[0]
+
+    cursor.execute("SELECT * FROM songs ORDER BY id DESC LIMIT ? OFFSET ?", (per_page, offset))
+    songs = cursor.fetchall()
+
+    pagination = Pagination(page=page, total=total, per_page=per_page, css_framework='bootstrap4')
+
+    conn.close()
+    return render_template('admin_songs.html', songs=songs, pagination=pagination)
+
+
+@app.route('/admin/delete_song/<song_id>', methods=['POST'])
+@login_required
+def delete_song(song_id):
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM songs WHERE id = ?", (song_id,))
+    conn.commit()
+    conn.close()
+    flash('Song deleted successfully!', 'success')
+    return redirect(url_for('admin_songs'))
+
+
+@app.route('/admin/statistics')
+@login_required
+def admin_statistics():
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+
+    # Get total number of users
+    cursor.execute("SELECT COUNT(*) FROM users")
+    total_users = cursor.fetchone()[0]
+
+    # Get total number of songs
+    cursor.execute("SELECT COUNT(*) FROM songs")
+    total_songs = cursor.fetchone()[0]
+
+    # Get top 10 most recommended songs
+    cursor.execute("""
+        SELECT songs.name, songs.artist, COUNT(*) as recommend_count
+        FROM recommendations
+        JOIN songs ON recommendations.song_id = songs.id
+        GROUP BY songs.id
+        ORDER BY recommend_count DESC
+        LIMIT 10
+    """)
+    top_recommendations = cursor.fetchall()
+
+    conn.close()
+
+    return render_template('admin_statistics.html', total_users=total_users,
+                           total_songs=total_songs, top_recommendations=top_recommendations)
+
+
+@app.route('/admin/users')
+@login_required
+def admin_users():
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users ORDER BY username ASC")  # ordering by username
+    users = cursor.fetchall()
+    conn.close()
+    return render_template('admin_users.html', users=users)
+
+
+@app.route('/admin/create_admin', methods=['GET', 'POST'])
+@login_required
+def create_admin():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        hashed_password = generate_password_hash(password)
+
+        conn = sqlite3.connect('songs_database.db')
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO admin_users (username, password_hash) VALUES (?, ?)", (username, hashed_password))
+        conn.commit()
+        conn.close()
+
+        flash('New admin user created successfully!', 'success')
+        return redirect(url_for('admin_dashboard'))
+
+    return render_template('create_admin.html')
+
+
+"""
+@app.route('/admin/songs')
+@login_required
+def admin_songs():
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM songs LIMIT 100")  # Limit to 100 for performance
+    songs = cursor.fetchall()
+    conn.close()
+    return render_template('admin_songs.html', songs=songs)"""
+
+
+def insert_recommendation(user_id, song_id):
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            INSERT INTO recommendations (user_id, song_id)
+            VALUES (?, ?)
+        ''', (user_id, song_id))
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"An error occurred: {e}")
+    finally:
+        conn.close()
 
 
 @app.route('/recommendations')
@@ -98,11 +438,13 @@ def recommendations_page():
         return redirect(url_for('login'))
     return send_from_directory('.', 'recommendations.html')
 
+
 @app.route('/check-auth')
 def check_auth():
     if not session.get('token_info'):
         return jsonify({"authenticated": False})
     return jsonify({"authenticated": True})
+
 
 def get_tracks_features(track_ids, max_retries=5):
     retries = 0
@@ -128,36 +470,41 @@ def get_tracks_features(track_ids, max_retries=5):
 
 
 @retry_with_exponential_backoff
-def get_track_data(track_id):
-    track_features = sp.audio_features([track_id])[0]
-    track_info = sp.track(track_id)
-    artist_info = sp.artist(track_info['artists'][0]['id'])
+def get_track_data(sp, track_id):
+    try:
+        track_features = sp.audio_features([track_id])[0]
+        track_info = sp.track(track_id)
+        artist_info = sp.artist(track_info['artists'][0]['id'])
 
-    return {
-        'danceability': track_features['danceability'],
-        'energy': track_features['energy'],
-        'key': track_features['key'],
-        'loudness': track_features['loudness'],
-        'mode': track_features['mode'],
-        'speechiness': track_features['speechiness'],
-        'acousticness': track_features['acousticness'],
-        'instrumentalness': track_features['instrumentalness'],
-        'liveness': track_features['liveness'],
-        'valence': track_features['valence'],
-        'tempo': track_features['tempo'],
-        'name': track_info['name'],
-        'id': track_info['id'],
-        'artist': track_info['artists'][0]['name'],
-        'popularity': track_info['popularity'],
-        'genres': ' '.join(artist_info['genres']) if artist_info['genres'] else 'unknown'
-    }
+        return {
+            'id': track_id,
+            'name': track_info['name'],
+            'artist': track_info['artists'][0]['name'],
+            'genres': ' '.join(artist_info['genres']) if artist_info['genres'] else 'unknown',
+            'danceability': track_features['danceability'],
+            'energy': track_features['energy'],
+            'key': track_features['key'],
+            'loudness': track_features['loudness'],
+            'mode': track_features['mode'],
+            'speechiness': track_features['speechiness'],
+            'acousticness': track_features['acousticness'],
+            'instrumentalness': track_features['instrumentalness'],
+            'liveness': track_features['liveness'],
+            'valence': track_features['valence'],
+            'tempo': track_features['tempo'],
+            'popularity': track_info['popularity']
+        }
+    except Exception as e:
+        print(f"Error in get_track_data: {str(e)}")
+        return None
 
 
 def update_dataset(new_track_data):
-    global df, X_audio, X_audio_scaled, X_genres
+    insert_song(new_track_data)
 
-    # Add new track to dataframe
-    df = pd.concat([df, pd.DataFrame([new_track_data])], ignore_index=True)
+    # Re-load the entire dataset
+    global df, X_audio, X_audio_scaled, X_genres
+    df = load_or_create_dataset()
 
     # Update audio features
     X_audio = df[audio_feature_cols]
@@ -165,9 +512,6 @@ def update_dataset(new_track_data):
 
     # Update genre features
     X_genres = tfidf.fit_transform(df['genres'])
-
-    # Save updated dataset
-    df.to_csv('songs_dataset.csv', index=False)
 
 
 def get_tracks_info(track_ids, max_retries=5):
@@ -236,11 +580,34 @@ def load_progress(playlist_id):
 
 
 def load_or_create_dataset():
-    if os.path.exists('songs_dataset.csv'):
-        df = pd.read_csv('songs_dataset.csv')
-        df['genres'] = df['genres'].fillna('unknown')
-        return df
+    conn = sqlite3.connect('songs_database.db')
+    cursor = conn.cursor()
+
+    # Check if the songs table exists and has data
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='songs'")
+    table_exists = cursor.fetchone()
+
+    if table_exists:
+        cursor.execute("SELECT COUNT(*) FROM songs")
+        row_count = cursor.fetchone()[0]
     else:
+        row_count = 0
+
+    if row_count > 0:
+        # If the table exists and has data, load it into a DataFrame
+        df = pd.read_sql_query("SELECT * FROM songs", conn)
+        print(f"Loaded {len(df)} songs from the existing database.")
+    else:
+        print("No existing data found. Creating new dataset...")
+        # Your Spotify API credentials
+        client_id = 'your_client_id'
+        client_secret = 'your_client_secret'
+
+        # Initialize Spotify client
+        client_credentials_manager = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
+        sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+
+        # List of playlist IDs to fetch songs from
         playlist_ids = [
             'spotify:playlist:37i9dQZF1DX4o1oenSJRJd',  # All Out 00s
             'spotify:playlist:37i9dQZF1DX4io1yPyoLtv',  # Turkish 80's
@@ -249,63 +616,61 @@ def load_or_create_dataset():
             'spotify:playlist:5q0MbTyQ0o954AVRhlAwMB',  # Russian Tiktok
         ]
 
-        all_data = []
+        all_tracks = []
+
         for playlist_id in playlist_ids:
-            processed_tracks = load_progress(playlist_id)
-            results = sp.playlist_items(playlist_id)
-            tracks = results['items']
+            offset = 0
+            while True:
+                response = sp.playlist_items(playlist_id,
+                                             offset=offset,
+                                             fields='items.track.id,items.track.name,items.track.artists,total',
+                                             additional_types=['track'])
 
-            batch_size = 50  # Spotify API allows up to 50 tracks per request
-            for i in range(0, len(tracks), batch_size):
-                batch = tracks[i:i + batch_size]
-                track_ids = [track['track']['id'] for track in batch if track['track']['id'] not in processed_tracks]
+                if len(response['items']) == 0:
+                    break
 
-                if not track_ids:
-                    continue
+                for item in response['items']:
+                    if item['track']:
+                        track = item['track']
+                        all_tracks.append({
+                            'id': track['id'],
+                            'name': track['name'],
+                            'artist': track['artists'][0]['name'] if track['artists'] else 'Unknown Artist'
+                        })
 
-                features = get_tracks_features(track_ids)
-                tracks_info = get_tracks_info(track_ids)
-                artist_ids = list(set(track['artists'][0]['id'] for track in tracks_info))
-                artists_info = get_artists_info(artist_ids)
+                offset = offset + len(response['items'])
+                time.sleep(1)  # To avoid hitting API rate limits
 
-                if features and tracks_info and artists_info:
-                    for feature, track_info in zip(features, tracks_info):
-                        artist_info = next(
-                            (artist for artist in artists_info if artist['id'] == track_info['artists'][0]['id']), None)
-                        if feature and artist_info:
-                            data = {
-                                'danceability': feature['danceability'],
-                                'energy': feature['energy'],
-                                'key': feature['key'],
-                                'loudness': feature['loudness'],
-                                'mode': feature['mode'],
-                                'speechiness': feature['speechiness'],
-                                'acousticness': feature['acousticness'],
-                                'instrumentalness': feature['instrumentalness'],
-                                'liveness': feature['liveness'],
-                                'valence': feature['valence'],
-                                'tempo': feature['tempo'],
-                                'name': track_info['name'],
-                                'id': track_info['id'],
-                                'artist': track_info['artists'][0]['name'],
-                                'popularity': track_info['popularity'],
-                                'genres': ' '.join(artist_info['genres']) if artist_info['genres'] else 'unknown'
-                            }
-                            all_data.append(data)
-                            processed_tracks.add(track_info['id'])
+        # Fetch audio features for all tracks
+        for i in range(0, len(all_tracks), 100):  # Spotify allows up to 100 tracks per request
+            track_ids = [track['id'] for track in all_tracks[i:i + 100]]
+            audio_features = sp.audio_features(track_ids)
 
-                save_progress(playlist_id, list(processed_tracks))
-                time.sleep(1)  # Add a small delay between batches
+            for j, features in enumerate(audio_features):
+                if features:
+                    all_tracks[i + j].update(features)
 
-        df = pd.DataFrame(all_data)
+            time.sleep(1)  # To avoid hitting API rate limits
 
-        # Explicitly convert genres to string to prevent future issues
-        df['genres'] = df['genres'].astype(str)
+        # Fetch artist genres
+        for track in all_tracks:
+            artist_id = sp.track(track['id'])['artists'][0]['id']
+            artist_info = sp.artist(artist_id)
+            track['genres'] = ' '.join(artist_info['genres']) if artist_info['genres'] else 'unknown'
+            time.sleep(0.1)  # To avoid hitting API rate limits
 
-        df.to_csv('songs_dataset.csv', index=False)
-        return df
+        # Create DataFrame
+        df = pd.DataFrame(all_tracks)
+
+        # Save to SQLite database
+        df.to_sql('songs', conn, if_exists='replace', index=False)
+        print(f"Created new dataset with {len(df)} songs and saved to database.")
+
+    conn.close()
+    return df
 
 
+create_tables()
 # Load the dataset
 df = load_or_create_dataset()
 
@@ -321,6 +686,27 @@ X_audio_scaled = scaler.fit_transform(X_audio)
 
 tfidf = TfidfVectorizer()
 X_genres = tfidf.fit_transform(df['genres'])
+
+
+# Function to insert a song into the database
+def insert_song(song_data, conn):
+    c = conn.cursor()
+
+    columns = '''(id, name, artist, popularity, genres, danceability, energy, key, 
+                loudness, mode, speechiness, acousticness, instrumentalness, 
+                liveness, valence, tempo)'''
+
+    # Construct the value tuple in the correct order (matching the columns order)
+    values = (song_data['id'], song_data['name'], song_data['artist'], song_data['popularity'],
+              song_data['genres'], song_data['danceability'], song_data['energy'], song_data['key'],
+              song_data['loudness'], song_data['mode'], song_data['speechiness'],
+              song_data['acousticness'], song_data['instrumentalness'],
+              song_data['liveness'], song_data['valence'], song_data['tempo'])
+
+    sql = f'''INSERT OR REPLACE INTO songs {columns} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+    c.execute(sql, values)
+
+    conn.commit()
 
 
 # Deep Learning model
@@ -360,55 +746,58 @@ def get_dl_features(audio_features):
 
 
 def get_input_tracks(sp, input_type, input_id):
-    if input_type == 'track':
-        return [input_id]
-    elif input_type == 'playlist':
-        playlist_tracks = sp.playlist_tracks(input_id)
-        return [item['track']['id'] for item in playlist_tracks['items']]
-    elif input_type == 'recent':
-        recent_tracks = sp.current_user_recently_played(limit=20)
-        return [item['track']['id'] for item in recent_tracks['items']]
-    else:
-        raise ValueError("Invalid input type")
+    try:
+        if input_type == 'track':
+            return [input_id]
+        elif input_type == 'playlist':
+            playlist_tracks = sp.playlist_tracks(input_id)
+            return [item['track']['id'] for item in playlist_tracks['items'] if item['track']]
+        elif input_type == 'recent':
+            recent_tracks = sp.current_user_recently_played(limit=20)
+            return [item['track']['id'] for item in recent_tracks['items']]
+        else:
+            raise ValueError("Invalid input type")
+    except Exception as e:
+        print(f"Error in get_input_tracks: {str(e)}")
+        return []
+
 
 def get_recommendations(similarities, df, num_recommendations):
-    similar_indices = similarities.argsort()[::-1][1:num_recommendations+1]
-    return df.iloc[similar_indices][['name', 'id', 'artist', 'genres']].to_dict('records')
+    try:
+        similar_indices = similarities.argsort()[::-1][1:num_recommendations + 1]
+        return df.iloc[similar_indices][['name', 'id', 'artist', 'genres']].to_dict('records')
+    except Exception as e:
+        print(f"Error in get_recommendations: {str(e)}")
+        return []
 
 
 def calculate_similarities(input_track, X_audio, X_genres, use_deep_learning, weights, audio_feature_cols, scaler,
                            tfidf, model):
-    input_audio_features = input_track[audio_feature_cols].values.reshape(1, -1)
+    try:
+        input_audio_features = np.array([input_track[col] for col in audio_feature_cols]).reshape(1, -1)
 
-    # Ensure weights array has the correct shape
-    weight_array = np.array(list(weights.values())).reshape(1, -1)
-    if weight_array.shape[1] != input_audio_features.shape[1]:
-        weight_array = np.ones((1, input_audio_features.shape[1]))  # Default to equal weights if shape mismatch
+        weight_array = np.array([weights.get(col, 1) for col in audio_feature_cols]).reshape(1, -1)
 
-    # Apply weights to features
-    weighted_input_features = input_audio_features * weight_array
-    weighted_features = X_audio.values * weight_array
+        weighted_input_features = input_audio_features * weight_array
+        weighted_features = X_audio.values * weight_array
 
-    if use_deep_learning:
-        input_dl_features = get_dl_features(weighted_input_features, model)
-        all_dl_features = get_dl_features(weighted_features, model)
-        audio_similarities = cosine_similarity(input_dl_features, all_dl_features)[0]
-    else:
-        input_audio_features_scaled = scaler.transform(weighted_input_features)
-        X_audio_scaled = scaler.transform(weighted_features)  # Scale all features after weighting
-        audio_similarities = cosine_similarity(input_audio_features_scaled, X_audio_scaled)[0]
+        if use_deep_learning:
+            input_dl_features = model.predict(weighted_input_features)
+            all_dl_features = model.predict(weighted_features)
+            audio_similarities = cosine_similarity(input_dl_features, all_dl_features)[0]
+        else:
+            input_audio_features_scaled = scaler.transform(weighted_input_features)
+            X_audio_scaled = scaler.transform(weighted_features)
+            audio_similarities = cosine_similarity(input_audio_features_scaled, X_audio_scaled)[0]
 
-    input_genres = tfidf.transform([input_track['genres']])
-    genre_similarities = cosine_similarity(input_genres, X_genres)[0]
+        input_genres = tfidf.transform([input_track['genres']])
+        genre_similarities = cosine_similarity(input_genres, X_genres)[0]
 
-    # Ensure audio_similarities and genre_similarities have the same shape
-    if audio_similarities.shape != genre_similarities.shape:
-        # Trim or pad the longer array to match the shorter one
-        min_length = min(audio_similarities.shape[0], genre_similarities.shape[0])
-        audio_similarities = audio_similarities[:min_length]
-        genre_similarities = genre_similarities[:min_length]
+        return 0.9 * audio_similarities + 0.1 * genre_similarities
+    except Exception as e:
+        print(f"Error in calculate_similarities: {str(e)}")
+        return np.zeros(len(X_audio))
 
-    return 0.7 * audio_similarities + 0.3 * genre_similarities
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
@@ -416,6 +805,7 @@ def recommend():
     if not sp:
         return jsonify({"error": "Not authenticated"}), 401
 
+    conn = sqlite3.connect('songs_database.db')
     data = request.json
     input_type = data.get('input_type', 'track')
     input_id = data.get('input_id')
@@ -425,6 +815,7 @@ def recommend():
     num_recommendations = int(data.get('num_recommendations', 10))
     use_deep_learning = data.get('use_deep_learning', False)
     mood = data.get('mood', '')
+
 
     mood_adjustments = {
         'happy': {'valence': 0.7, 'energy': 0.6},
@@ -440,18 +831,39 @@ def recommend():
         input_tracks = get_input_tracks(sp, input_type, input_id)
         all_recommendations = []
 
-        for track_id in input_tracks:
-            if track_id not in df['id'].values:
-                new_track_data = get_track_data(track_id)
-                new_track_data['genres'] = str(new_track_data['genres'])
-                update_dataset(new_track_data)
+        # Load all songs from the database
+        df = pd.read_sql_query("SELECT * FROM songs", conn)
 
-            input_track = df[df['id'] == track_id].iloc[0]
-            input_track['genres'] = input_track['genres'].lower()
+        # Prepare features for similarity calculation
+        audio_feature_cols = ['danceability', 'energy', 'key', 'loudness', 'mode', 'speechiness',
+                              'acousticness', 'instrumentalness', 'liveness', 'valence', 'tempo']
+        X_audio = df[audio_feature_cols]
+        scaler = MinMaxScaler()
+        X_audio_scaled = scaler.fit_transform(X_audio)
+
+        tfidf = TfidfVectorizer()
+        X_genres = tfidf.fit_transform(df['genres'])
+
+        for track_id in input_tracks:
+            # Check if track exists in database
+            track_df = df[df['id'] == track_id]
+            if track_df.empty:
+                new_track_data = get_track_data(sp, track_id)
+                if new_track_data:
+                    new_track_data['genres'] = str(new_track_data['genres'])
+                    insert_song(new_track_data, conn)  # Pass both new_track_data and conn
+                    df = pd.read_sql_query("SELECT * FROM songs", conn)
+                    track_df = df[df['id'] == track_id]
+                else:
+                    continue  # Skip this track if we couldn't get its data
+
+            track_df.iloc[0, track_df.columns.get_loc('genres')] = track_df.iloc[0, track_df.columns.get_loc('genres')].lower()
+            input_track = track_df.iloc[0]
 
             similarities = calculate_similarities(input_track, X_audio, X_genres, use_deep_learning, weights,
                                                   audio_feature_cols, scaler, tfidf, model)
-            recommendations = get_recommendations(similarities, df, num_recommendations * 2)  # Get more recommendations to allow for filtering
+            recommendations = get_recommendations(similarities, df,
+                                                  num_recommendations * 2)  # Get more recommendations to allow for filtering
 
             # Filter out excluded artists and genres
             filtered_recommendations = [
@@ -480,7 +892,8 @@ def recommend():
         tracks_info = sp.tracks(track_ids)['tracks']
         audio_features = sp.audio_features(track_ids)
 
-        # Combine track info with audio features
+        # Combine track info with audio features and save recommendations
+        user_id = session.get('user_id')  # Make sure you have the user_id in the session
         for track, info, features in zip(top_recommendations, tracks_info, audio_features):
             track.update({
                 'preview_url': info['preview_url'],
@@ -495,12 +908,16 @@ def recommend():
                 'instrumentalness': features['instrumentalness'],
                 'liveness': features['liveness']
             })
+            # Save this recommendation to the database
+            insert_recommendation(user_id, track['id'])
 
         return jsonify(top_recommendations)
 
     except Exception as e:
         print(f"Error in recommend function: {str(e)}")
         return jsonify({"error": "An error occurred while processing your request"}), 500
+    finally:
+        conn.close()
 
 
 # New route to get access token for Spotify Web Playback SDK
@@ -515,6 +932,7 @@ def get_spotify_token():
         return jsonify({"token": token_info['access_token']})
     else:
         return jsonify({"error": "No token available"}), 401
+
 
 @app.route('/get-token')
 def get_token():
@@ -534,8 +952,10 @@ def get_token():
 
     return jsonify({"token": token_info['access_token']})
 
+
 def get_cached_similarities(input_track, use_deep_learning):
     return calculate_similarities(input_track, use_deep_learning)
+
 
 @app.route('/')
 def index():
@@ -570,9 +990,32 @@ def callback():
 
             sp = spotipy.Spotify(auth=token_info['access_token'])
             user_info = sp.me()
-            session['user_id'] = user_info['id']
+
+            user_id = str(user_info['id'])
+            username = str(user_info['display_name'])
+            email = str(user_info['email']) if user_info['email'] is not None else ""
+
+            # Check if the user already exists
+            conn = sqlite3.connect('songs_database.db')
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            existing_user = cursor.fetchone()
+
+            if not existing_user:
+                print(f"Inserting user: {user_id}, {username}, {email}")
+                cursor.execute("INSERT INTO users (id, username, email) VALUES (?, ?, ?)",
+                               (user_id, username, email))
+                conn.commit()
+            else:
+                conn.close()
+
+            session['user_id'] = user_id
 
             return redirect('/')
+
+        except sqlite3.Error as e:
+            logging.error(f"Error in callback (SQL): {str(e)}")
+            return jsonify({"error": str(e)}), 500
         except Exception as e:
             logging.error(f"Error in callback: {str(e)}")
             return jsonify({"error": str(e)}), 500
@@ -586,7 +1029,7 @@ def logout():
     user_id = session.get('user_id')
 
     if token_info:
-        # Revoke token using Spotify's Web API (Does not work!)
+        # Revoke token using Spotify's Web API(Doesn't exist!)
         url = 'https://accounts.spotify.com/api/token/revoke'
         data = {
             'token': token_info['access_token'],
@@ -611,25 +1054,31 @@ def logout():
 
     return redirect(url_for('index'))
 
+
 def get_spotify_client():
-    token_info = session.get('token_info', None)
-    logging.debug(f"Token info from session: {token_info}") 
-    if not token_info:
-        logging.error("No token info in session")
-        return None
+    try:
+        token_info = session.get('token_info', None)
+        if not token_info:
+            raise Exception("No token info in session")
 
-    now = int(time.time())
-    is_expired = token_info['expires_at'] - now < 60
+        now = int(time.time())
+        is_expired = token_info['expires_at'] - now < 60
 
-    if is_expired:
-        try:
+        if is_expired:
+            sp_oauth = spotipy.oauth2.SpotifyOAuth(
+                client_id=client_id,
+                client_secret=client_secret,
+                redirect_uri=redirect_uri,
+                scope='user-library-read user-read-recently-played playlist-read-private playlist-read-collaborative user-top-read'
+            )
             token_info = sp_oauth.refresh_access_token(token_info['refresh_token'])
             session['token_info'] = token_info
-        except Exception as e:
-            logging.error(f"Error refreshing token: {str(e)}")
-            return None
 
-    return spotipy.Spotify(auth=token_info['access_token'])
+        return spotipy.Spotify(auth=token_info['access_token'])
+    except Exception as e:
+        print(f"Error in get_spotify_client: {str(e)}")
+        return None
+
 
 @app.route('/user-playlists')
 def get_user_playlists():
@@ -648,13 +1097,12 @@ def get_user_playlists():
 
 
 @app.route('/recently-played')
-
 def get_recently_played():
     sp = get_spotify_client()
     if not sp:
         return jsonify({"error": "Not authenticated"}), 401
 
-    recent_tracks = sp.current_user_recently_played()
+    recent_tracks = sp.current_user_recently_played(limit=20)
     return jsonify(recent_tracks)
 
 
@@ -683,6 +1131,7 @@ def log_request_info():
     logging.debug('Headers: %s', request.headers)
     logging.debug('Body: %s', request.get_data())
 
+
 @app.after_request
 def log_response_info(response):
     logging.debug('Response Status: %s', response.status)
@@ -701,6 +1150,7 @@ def profile():
         top_tracks = sp.current_user_top_tracks(limit=10, time_range='medium_term')['items']
         top_artists = sp.current_user_top_artists(limit=10, time_range='medium_term')['items']
         playlists = sp.current_user_playlists(limit=10)['items']
+        recently_played = sp.current_user_recently_played(limit=20)['items']  # Fetch recently played tracks
 
         # Get favorite genres
         all_genres = [genre for artist in top_artists for genre in artist['genres']]
@@ -712,10 +1162,12 @@ def profile():
                                top_tracks=top_tracks,
                                top_artists=top_artists,
                                favorite_genres=favorite_genres,
-                               playlists=playlists)
+                               playlists=playlists,
+                               recently_played=recently_played)  # Pass recently played tracks to the template
     except Exception as e:
         print(f"Error fetching user profile data: {str(e)}")
         return jsonify({"error": "An error occurred while fetching your profile data"}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)

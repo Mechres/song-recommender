@@ -19,7 +19,7 @@
                 <h2 class="text-2xl font-semibold mb-4">Top Tracks</h2>
                 <ul class="space-y-2">
                     {% for track in top_tracks %}
-                    <li class="flex items-center">
+                    <li class="flex items-center hover:bg-gray-100 p-2 rounded">
                         <img src="{{ track.album.images[2].url }}" alt="{{ track.name }}" class="w-10 h-10 mr-3">
                         <span>{{ track.name }} by {{ track.artists[0].name }}</span>
                     </li>
@@ -31,7 +31,7 @@
                 <h2 class="text-2xl font-semibold mb-4">Top Artists</h2>
                 <ul class="space-y-2">
                     {% for artist in top_artists %}
-                    <li class="flex items-center">
+                    <li class="flex items-center hover:bg-gray-100 p-2 rounded">
                         <img src="{{ artist.images[2].url }}" alt="{{ artist.name }}" class="w-10 h-10 mr-3 rounded-full">
                         <span>{{ artist.name }}</span>
                     </li>
@@ -50,13 +50,32 @@
                 <h2 class="text-2xl font-semibold mb-4">Playlists</h2>
                 <ul class="space-y-2">
                     {% for playlist in playlists %}
-                    <li>
+                    <li class="hover:bg-gray-100 p-2 rounded">
                         <span class="font-semibold">{{ playlist.name }}</span> ({{ playlist.tracks.total }} tracks)
                     </li>
                     {% endfor %}
                 </ul>
             </div>
         </div>
+
+{% if recently_played %}
+<div class="mt-8 bg-white p-6 rounded-lg shadow">
+    <h2 class="text-2xl font-semibold mb-4">Recently Played Tracks</h2>
+    <ul class="space-y-2">
+        {% for item in recently_played %}
+        <li class="flex items-center hover:bg-gray-100 p-2 rounded">
+            <img src="{{ item.track.album.images[2].url }}" alt="{{ item.track.name }}" class="w-10 h-10 mr-3">
+            <span>{{ item.track.name }} by {{ item.track.artists[0].name }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% else %}
+<div class="mt-8 bg-white p-6 rounded-lg shadow">
+    <h2 class="text-2xl font-semibold mb-4">Recently Played Tracks</h2>
+    <p class="text-gray-600">No recently played tracks available.</p>
+</div>
+{% endif %}
     </div>
 
     <script>

@@ -1,9 +1,13 @@
 Flask==3.0.3
 Flask_Cors==4.0.1
+Flask_Login==0.6.3
+flask_paginate==2024.4.12
 numpy==2.0.1
 pandas==2.2.2
+python_bcrypt==0.3.2
 Requests==2.32.3
 scikit_learn==1.5.1
 spotipy==2.24.0
 tensorflow==2.17.0
 tensorflow_intel==2.17.0
+Werkzeug==3.0.3
