@@ -173,6 +173,15 @@ In case of an error, the API will return a JSON object with an error message. Th
 
 This project is for educational and personal use. Please adhere to Spotify's API usage guidelines.
 
+## Screenshots
+
+![resim](https://github.com/user-attachments/assets/74296209-8ac7-41ce-944b-d7f40c15ba15)
+![resim](https://github.com/user-attachments/assets/06c24b2d-6d9e-48bc-ae27-8beee77451cd)
+![resim](https://github.com/user-attachments/assets/b185df81-66e6-422d-a799-e6c94f1dec2b)
+![resim](https://github.com/user-attachments/assets/b9de05ca-66f1-4e80-ab58-64cdbbc9de92)
+![resim](https://github.com/user-attachments/assets/ebc44c70-12e2-4b22-8c81-e31de364a698)
+![resim](https://github.com/user-attachments/assets/4fccd34c-1155-4f88-af5b-ac3de5432792)
+
 ## License
 
 This project is open source and available under the [MIT License](LICENSE).
