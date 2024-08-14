@@ -1,0 +1,54 @@
+<!-- admin_statistics.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Statistics</title>
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        h1, h2 {
+            color: #bb86fc;
+        }
+        p {
+            font-size: 18px;
+            margin: 10px 0;
+        }
+        ol {
+            list-style-position: inside;
+            padding-left: 20px;
+        }
+        li {
+            margin: 10px 0;
+            font-size: 16px;
+        }
+        a {
+            color: #03dac6;
+            text-decoration: none;
+            font-size: 18px;
+            display: inline-block;
+            margin-top: 20px;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Statistics</h1>
+    <p>Total Users: {{ total_users }}</p>
+    <p>Total Songs: {{ total_songs }}</p>
+    <h2>Top 10 Recommended Songs</h2>
+    <ol>
+        {% for song in top_recommendations %}
+        <li>{{ song[0] }} by {{ song[1] }} ({{ song[2] }} recommendations)</li>
+        {% endfor %}
+    </ol>
+    <a href="{{ url_for('admin_dashboard') }}">Back to Dashboard</a>
+</body>
+</html>

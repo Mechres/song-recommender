@@ -140,7 +140,6 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 const fetchRecommendations = async () => {
-
   const payload = {
     numRecommendations: document.getElementById('numRecommendations').value,
     useDeepLearning: document.getElementById('useDeepLearning').checked,

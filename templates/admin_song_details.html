@@ -1,0 +1,70 @@
+{% extends "admin_base.html" %}
+{% block title %}Song Details{% endblock %}
+{% block content %}
+<h1>Song Details</h1>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">{{ song[1] }}</h5>
+        <h6 class="card-subtitle mb-2 text-muted">{{ song[2] }}</h6>
+        <p class="card-text">
+            <strong>ID:</strong> {{ song[0] }}<br>
+            <strong>Popularity:</strong> {{ song[3] }}<br>
+            <strong>Genres:</strong> {{ song[4] }}<br>
+            <strong>Danceability:</strong> {{ song[5] }}<br>
+            <strong>Energy:</strong> {{ song[6] }}<br>
+            <strong>Key:</strong> {{ song[7] }}<br>
+            <strong>Loudness:</strong> {{ song[8] }}<br>
+            <strong>Mode:</strong> {{ song[9] }}<br>
+            <strong>Speechiness:</strong> {{ song[10] }}<br>
+            <strong>Acousticness:</strong> {{ song[11] }}<br>
+            <strong>Instrumentalness:</strong> {{ song[12] }}<br>
+            <strong>Liveness:</strong> {{ song[13] }}<br>
+            <strong>Valence:</strong> {{ song[14] }}<br>
+            <strong>Tempo:</strong> {{ song[15] }}
+        </p>
+    </div>
+</div>
+
+<div class="mt-3">
+    <a href="{{ url_for('admin_songs') }}" class="btn btn-secondary">Back to Songs</a>
+    <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#editModal{{ song[0] }}">
+        Edit Song
+    </button>
+    <form action="{{ url_for('delete_song', song_id=song[0]) }}" method="post" style="display:inline;">
+        <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to delete this song?')">Delete Song</button>
+    </form>
+</div>
+
+<div class="modal fade" id="editModal{{ song[0] }}" tabindex="-1" role="dialog" aria-labelledby="editModalLabel{{ song[0] }}" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editModalLabel{{ song[0] }}">Edit Song</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('admin_songs') }}" method="post">
+                    <input type="hidden" name="id" value="{{ song[0] }}">
+                    <div class="form-group">
+                        <label for="name{{ song[0] }}">Name</label>
+                        <input type="text" class="form-control" id="name{{ song[0] }}" name="name" value="{{ song[1] }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="artist{{ song[0] }}">Artist</label>
+                        <input type="text" class="form-control" id="artist{{ song[0] }}" name="artist" value="{{ song[2] }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="genres{{ song[0] }}">Genres</label>
+                        <input type="text" class="form-control" id="genres{{ song[0] }}" name="genres" value="{{ song[4] }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

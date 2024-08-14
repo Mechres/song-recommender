@@ -1,0 +1,93 @@
+{% extends "admin_base.html" %}
+{% block title %}Manage Songs{% endblock %}
+{% block content %}
+<h1>Manage Songs</h1>
+
+<div class="input-group mb-3">
+    <input type="text" class="form-control" placeholder="Search songs..." id="searchInput">
+    <div class="input-group-append">
+        <button class="btn btn-outline-secondary" type="button" id="searchButton">Search</button>
+    </div>
+</div>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Artist</th>
+            <th>Genres</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for song in songs %}
+        <tr>
+            <td>{{ song[0] }}</td>
+            <td>{{ song[1] }}</td>
+            <td>{{ song[2] }}</td>
+            <td>{{ song[4] }}</td>
+            <td>
+                <a href="{{ url_for('song_details', song_id=song[0]) }}" class="btn btn-info btn-sm">Details</a>
+                <button type="button" class="btn btn-primary btn-sm" data-toggle="modal" data-target="#editModal{{ song[0] }}">
+                    Edit
+                </button>
+                <form action="{{ url_for('delete_song', song_id=song[0]) }}" method="post" style="display:inline;">
+                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this song?')">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% for song in songs %}
+<div class="modal fade" id="editModal{{ song[0] }}" tabindex="-1" role="dialog" aria-labelledby="editModalLabel{{ song[0] }}" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editModalLabel{{ song[0] }}">Edit Song</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form action="{{ url_for('admin_songs') }}" method="post">
+                    <input type="hidden" name="id" value="{{ song[0] }}">
+                    <div class="form-group">
+                        <label for="name{{ song[0] }}">Name</label>
+                        <input type="text" class="form-control" id="name{{ song[0] }}" name="name" value="{{ song[1] }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="artist{{ song[0] }}">Artist</label>
+                        <input type="text" class="form-control" id="artist{{ song[0] }}" name="artist" value="{{ song[2] }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="genres{{ song[0] }}">Genres</label>
+                        <input type="text" class="form-control" id="genres{{ song[0] }}" name="genres" value="{{ song[4] }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+{{ pagination.links }}
+
+<script>
+document.getElementById('searchButton').addEventListener('click', function() {
+    var searchQuery = document.getElementById('searchInput').value;
+    window.location.href = "{{ url_for('search_songs') }}?query=" + encodeURIComponent(searchQuery);
+});
+
+document.getElementById('searchInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        var searchQuery = this.value;
+        window.location.href = "{{ url_for('search_songs') }}?query=" + encodeURIComponent(searchQuery);
+    }
+});
+</script>
+
+{% endblock %}
