@@ -6,13 +6,19 @@ This Flask-based application utilizes Spotify's API and machine learning techniq
 
 You can get recommendations by Single Track, Playlist or Recently Played. And create a playlist with recommended songs!
 
-Dataset and pre-trained model included.
+Database and pre-trained model included.
 
-Updated Version
+Check the video for full features, This readme file is from V2!
 
+```    Bash
+Admin Login:
+Username: Mechres
+Pass: admin
+You can create an admin user from admin panel.
+```
 ## Youtube Video:
 
-[![Youtube](https://img.youtube.com/vi/i_qr6q522V8/0.jpg)](https://www.youtube.com/watch?v=i_qr6q522V8)
+[![Youtube](https://img.youtube.com/vi/0zfEDVF4aKs/0.jpg)](https://www.youtube.com/watch?v=0zfEDVF4aKs)
 
 ## Features
 
